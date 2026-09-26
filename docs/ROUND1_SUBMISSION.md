@@ -41,9 +41,9 @@ Schedule Stability
 Soft Preferences
 ```
 
-Hard constraints are mandatory. Among valid schedules, the repair objective first minimizes the number of changed baseline sessions, then the severity of those changes, then preference penalties such as late starts. An unchanged assignment has zero repair cost. A room change is cheaper than a time change, and a day change carries the highest movement cost.
+Hard constraints are mandatory. Among valid schedules, the repair objective follows **changed-session count > movement severity > soft preference**. An unchanged assignment has zero repair cost. The implemented movement costs are **room change = 1**, **time/start change = 4** and **day change = 10**; preference penalties are considered only after these priorities.
 
-The result is a schedule that is valid, explainable and stable. Solver statuses remain truthful: `OPTIMAL` proves the best result under the modeled objective, while `FEASIBLE` means a valid incumbent was found without an optimality proof.
+The result is a schedule that is valid, explainable and stable. Solver statuses remain truthful: `OPTIMAL` proves that the minimum-change objective has been optimized under the modeled constraints, while `FEASIBLE` means a valid incumbent was found without an optimality proof.
 
 ## 4. System Architecture
 
@@ -85,7 +85,7 @@ The architecture uses one frontend, one backend service and one relational datab
 
 FastAPI routes validate requests with Pydantic and pass domain operations to resource, scheduling and repair services. Resource services validate teachers, rooms, courses, cohorts, constraints and CSV imports before persistence. Scheduling services manage candidate, published and archived states.
 
-Generation expands course requirements into class sessions and invokes CP-SAT. Repair validates the published baseline, applies the disruption to a copied snapshot and solves with baseline-aware penalties. An independent validator checks every candidate before it is stored or published. Revision checks prevent stale candidates or concurrent resource edits from silently replacing newer data.
+Generation expands course requirements into class sessions and invokes CP-SAT. Repair validates an immutable published-baseline snapshot, applies the disruption to that snapshot and solves with baseline-aware penalties. An independent validator checks every candidate before it is stored or published. Candidate, published and archived state transitions are protected by revision checks so stale candidates or concurrent resource edits cannot silently replace newer data.
 
 Responses include solver status, schedule metrics, assignments and, for repairs, a structured diff. Infeasible and unfinished solves return their actual status and do not replace the current published schedule. Errors are returned as safe, typed API responses rather than raw server traces.
 
@@ -119,7 +119,7 @@ erDiagram
     ORGANIZATION ||--o{ SOLVER_RUN : records
 ```
 
-Each schedule stores an input snapshot, so later catalog edits do not rewrite historical timetables. Publishing a repaired candidate archives the previous version and advances the organization’s current schedule pointer. Organization-scoped queries and membership checks provide tenant isolation; relational keys and unique schedule-entry constraints protect data integrity.
+Each schedule stores the input snapshot used for optimization, so later catalog edits do not rewrite historical timetables and every version remains reproducible. Repaired schedules reference their published baseline; publishing a repaired candidate archives the previous version and advances the organization’s current schedule pointer. Disruption and solver-run history provide traceability from an incident to the candidate and its outcome. Organization-scoped queries and membership checks provide tenant isolation; relational keys and unique schedule-entry constraints protect data integrity.
 
 ## 8. API Design
 
@@ -182,7 +182,7 @@ The weights are ordered so that one fewer changed session outweighs all severity
 
 ### Reliability
 
-The solver output is independently validated before persistence and publication. `OPTIMAL`, `FEASIBLE`, `INFEASIBLE`, `UNKNOWN` and `MODEL_INVALID` remain distinct. Explanations are derived from known resource and interval conflicts; secondary changes are labeled as cascade adjustments. Human approval is required before a repaired timetable becomes the new published baseline.
+The solver output is independently validated before persistence and publication. `OPTIMAL`, `FEASIBLE`, `INFEASIBLE`, `UNKNOWN` and `MODEL_INVALID` remain distinct: only `OPTIMAL` proves that the minimum-change objective has been optimized under the modeled constraints; `FEASIBLE` is valid but not proven optimal. Explanations are derived from known resource and interval conflicts; secondary changes are labeled as cascade adjustments. Human approval is required before a repaired timetable becomes the new published baseline.
 
 The model understands the weekly constraints represented in the domain. Substitute-teacher search, emergency insertion and richer institutional policies are future extensions. Larger workloads may require longer solve budgets or worker processes.
 
