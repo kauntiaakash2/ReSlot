@@ -1,5 +1,9 @@
 # ReSlot
 
+<p align="center">
+  <img src="./docs/assets/reslot-logo-horizontal.png" alt="ReSlot logo" width="320" />
+</p>
+
 ### Minimum-Disruption Timetable Recovery
 
 > ReSlot generates conflict-free academic timetables and repairs real-world disruptions while changing as little of the published timetable as possible.
